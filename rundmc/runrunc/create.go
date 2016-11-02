@@ -41,6 +41,7 @@ func (c *Creator) Create(log lager.Logger, bundlePath, id string, _ garden.Proce
 		"pidFilePath": pidFilePath,
 	})
 
+	//TODO: run un new mount ns + unmount uneeded mounts
 	err := c.commandRunner.Run(cmd)
 
 	defer func() {
