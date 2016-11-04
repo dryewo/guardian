@@ -1,6 +1,7 @@
 package runrunc
 
 import (
+	"bytes"
 	"encoding/json"
 	"fmt"
 	"io/ioutil"
@@ -35,9 +36,16 @@ func (c *Creator) Create(log lager.Logger, bundlePath, id string, _ garden.Proce
 	pidFilePath := filepath.Join(bundlePath, "pidfile")
 	configFilePath := filepath.Join(bundlePath, "config.json")
 
-	bundleBytes, _ := ioutil.ReadFile(configFilePath)
+	bundleBytes, err := ioutil.ReadFile(configFilePath)
+	if err != nil {
+		return err
+	}
+
 	bundle := &specs.Spec{}
-	json.Unmarshal(bundleBytes, bundle)
+	err = json.Unmarshal(bundleBytes, bundle)
+	if err != nil {
+		return err
+	}
 
 	layerPath := bundle.Root.Path
 	mountsRoot := filepath.Dir(filepath.Dir(layerPath))
@@ -53,10 +61,10 @@ func (c *Creator) Create(log lager.Logger, bundlePath, id string, _ garden.Proce
 		"pidFilePath": pidFilePath,
 	})
 
-	//TODO: run un new mount ns + unmount uneeded mounts
-	// cmd.Stdout = os.Stdout
-	// cmd.Stderr = os.Stderr
-	err := c.commandRunner.Run(cmd)
+	errBuffer := bytes.NewBuffer()
+	cmd.Stderr = errBuffer
+
+	err = c.commandRunner.Run(cmd)
 
 	defer func() {
 		theErr = processLogs(log, logFilePath, err)
