@@ -1,6 +1,7 @@
 package runrunc
 
 import (
+	"encoding/json"
 	"fmt"
 	"io/ioutil"
 	"os"
@@ -10,16 +11,18 @@ import (
 	"code.cloudfoundry.org/garden"
 	"code.cloudfoundry.org/lager"
 	"github.com/cloudfoundry/gunk/command_runner"
+	specs "github.com/opencontainers/runtime-spec/specs-go"
 )
 
 type Creator struct {
 	runcPath      string
+	undooPath     string
 	commandRunner command_runner.CommandRunner
 }
 
-func NewCreator(runcPath string, commandRunner command_runner.CommandRunner) *Creator {
+func NewCreator(runcPath, undooPath string, commandRunner command_runner.CommandRunner) *Creator {
 	return &Creator{
-		runcPath, commandRunner,
+		runcPath, undooPath, commandRunner,
 	}
 }
 
@@ -30,8 +33,17 @@ func (c *Creator) Create(log lager.Logger, bundlePath, id string, _ garden.Proce
 
 	logFilePath := filepath.Join(bundlePath, "create.log")
 	pidFilePath := filepath.Join(bundlePath, "pidfile")
+	configFilePath := filepath.Join(bundlePath, "config.json")
 
-	cmd := exec.Command(c.runcPath, "--debug", "--log", logFilePath, "create", "--no-new-keyring", "--bundle", bundlePath, "--pid-file", pidFilePath, id)
+	bundleBytes, _ := ioutil.ReadFile(configFilePath)
+	bundle := &specs.Spec{}
+	json.Unmarshal(bundleBytes, bundle)
+
+	layerPath := bundle.Root.Path
+	mountsRoot := filepath.Dir(filepath.Dir(layerPath))
+	layerToKeep := filepath.Base(layerPath)
+
+	cmd := exec.Command(c.undooPath, mountsRoot, layerToKeep, c.runcPath, "--debug", "--log", logFilePath, "create", "--no-new-keyring", "--bundle", bundlePath, "--pid-file", pidFilePath, id)
 
 	log.Info("creating", lager.Data{
 		"runc":        c.runcPath,
@@ -42,6 +54,8 @@ func (c *Creator) Create(log lager.Logger, bundlePath, id string, _ garden.Proce
 	})
 
 	//TODO: run un new mount ns + unmount uneeded mounts
+	// cmd.Stdout = os.Stdout
+	// cmd.Stderr = os.Stderr
 	err := c.commandRunner.Run(cmd)
 
 	defer func() {

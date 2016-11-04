@@ -17,7 +17,7 @@ var _ = Describe("Undoo", func() {
 	)
 
 	It("executes the command line passed as args", func() {
-		cmd := exec.Command(undooBinPath, "mountsDir", "keep-id", "echo", "yabadabadoo")
+		cmd := exec.Command(undooBinPath, "mountsRoot", "keep-id", "echo", "yabadabadoo")
 		Expect(cmd.CombinedOutput()).To(ContainSubstring("yabadabadoo"))
 	})
 
@@ -26,7 +26,7 @@ var _ = Describe("Undoo", func() {
 		parentNsBytes, err := parentNsCmd.CombinedOutput()
 		Expect(err).NotTo(HaveOccurred())
 
-		cmd := exec.Command(undooBinPath, "mountsDir", "keep-id", "readlink", "/proc/self/ns/mnt")
+		cmd := exec.Command(undooBinPath, "mountsRoot", "keep-id", "readlink", "/proc/self/ns/mnt")
 		childNsBytes, err := cmd.CombinedOutput()
 		Expect(err).NotTo(HaveOccurred())
 
@@ -34,7 +34,7 @@ var _ = Describe("Undoo", func() {
 	})
 
 	It("forwards any error message", func() {
-		cmd := exec.Command(undooBinPath, "mountsDir", "keep-id", "ls", "scooobydoo")
+		cmd := exec.Command(undooBinPath, "mountsRoot", "keep-id", "ls", "scooobydoo")
 		out, err := cmd.CombinedOutput()
 		Expect(err).To(HaveOccurred())
 		Expect(string(out)).To(ContainSubstring("No such file or directory"))
@@ -46,6 +46,9 @@ var _ = Describe("Undoo", func() {
 			depotPath, err = ioutil.TempDir("", "")
 			Expect(err).NotTo(HaveOccurred())
 			depotPath = filepath.Join(depotPath, "aufs")
+			Expect(os.MkdirAll(depotPath, 0644)).To(Succeed())
+
+			Expect(syscall.Mount(depotPath, depotPath, "", syscall.MS_BIND, "")).To(Succeed())
 
 			mnt1 = filepath.Join(depotPath, "mnt1")
 			Expect(os.MkdirAll(mnt1, 0644)).To(Succeed())
@@ -59,19 +62,23 @@ var _ = Describe("Undoo", func() {
 		AfterEach(func() {
 			syscall.Unmount(mnt1, 0)
 			syscall.Unmount(mnt2, 0)
+			syscall.Unmount(depotPath, 0)
+			os.RemoveAll(depotPath)
 		})
 
 		It("unmounts all unneeded mounts from the child mount namespace", func() {
 			cmd := exec.Command(undooBinPath, depotPath, "mnt2", "cat", "/proc/mounts")
 			mountsBytes, err := cmd.CombinedOutput()
 			Expect(err).NotTo(HaveOccurred())
-
 			mounts := string(mountsBytes)
+
 			Expect(mounts).NotTo(ContainSubstring("mnt1"))
 			Expect(mounts).To(ContainSubstring("mnt2"))
 
-			mountsBytes, err = exec.Command("cat", "/proc/mounts").CombinedOutput()
+			mountsBytes, err = exec.Command("cat", "/proc/self/mounts").CombinedOutput()
 			Expect(err).NotTo(HaveOccurred())
+			mounts = string(mountsBytes)
+
 			Expect(mounts).To(ContainSubstring("mnt1"))
 			Expect(mounts).To(ContainSubstring("mnt2"))
 		})
