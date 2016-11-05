@@ -192,7 +192,8 @@ const SetupScript = `
 	setup_nat
 
 	# Enable forwarding
-	echo 1 > /proc/sys/net/ipv4/ip_forward
+	# should be enabled externally
+	# echo 1 > /proc/sys/net/ipv4/ip_forward
 	;;
 	teardown)
 	teardown_filter
